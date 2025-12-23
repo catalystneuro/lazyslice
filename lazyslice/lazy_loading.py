@@ -46,7 +46,13 @@ except ImportError:
 def _is_zarr_array(obj: Any) -> bool:
     """Check if object is a zarr array without importing zarr."""
     if HAVE_ZARR:
-        return isinstance(obj, zarr_module.core.Array)
+        # Zarr 3.x uses zarr.Array, Zarr 2.x uses zarr.core.Array
+        if hasattr(zarr_module, "Array"):
+            # Zarr 3.x
+            return isinstance(obj, zarr_module.Array)
+        else:
+            # Zarr 2.x
+            return isinstance(obj, zarr_module.core.Array)
     return "zarr" in str(type(obj)).lower()
 
 

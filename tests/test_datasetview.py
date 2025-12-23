@@ -56,13 +56,23 @@ def zarr_group() -> Generator[zarr.Group, None, None]:
         
         # Same datasets as h5py for consistent testing
         data_3d = np.arange(10 * 8 * 6).reshape(10, 8, 6).astype(float)
-        group.create_dataset("data_3d", data=data_3d)
-        
         data_2d = np.arange(20).reshape(5, 4).astype(float)
-        group.create_dataset("data_2d", data=data_2d)
-        
         data_1d = np.arange(12).astype(float)
-        group.create_dataset("data_1d", data=data_1d)
+        
+        # Zarr 3.x requires shape parameter, Zarr 2.x accepts just data
+        try:
+            # Try Zarr 3.x API first (requires shape parameter)
+            group.create_dataset("data_3d", shape=data_3d.shape, dtype=data_3d.dtype)
+            group["data_3d"][:] = data_3d
+            group.create_dataset("data_2d", shape=data_2d.shape, dtype=data_2d.dtype)
+            group["data_2d"][:] = data_2d
+            group.create_dataset("data_1d", shape=data_1d.shape, dtype=data_1d.dtype)
+            group["data_1d"][:] = data_1d
+        except TypeError:
+            # Fall back to Zarr 2.x API
+            group.create_dataset("data_3d", data=data_3d)
+            group.create_dataset("data_2d", data=data_2d)
+            group.create_dataset("data_1d", data=data_1d)
         
         yield group
 
