@@ -251,6 +251,71 @@ class DatasetView:
             self.dataset, (key_reinit, self._int_index), self.axis_order
         ).read()
 
+    def __setitem__(self, key, value) -> None:
+        """Support item assignment that respects lazy slices and transposes.
+        
+        This method transforms the assignment key and value to account for
+        any accumulated slice and transpose operations, then writes to the
+        underlying dataset.
+        
+        Parameters
+        ----------
+        key : slice, int, tuple, etc.
+            The index/slice to assign to.
+        value : array_like
+            The value to assign.
+            
+        Note
+        ----
+        This operation writes directly to the underlying dataset and may
+        not preserve lazy loading benefits for subsequent reads of the
+        modified data.
+        """
+        # Create a view for the subset being assigned
+        key_reinit = self._slice_composition(key)
+        subset_view = DatasetView(
+            self.dataset, (key_reinit, self._int_index), self.axis_order
+        )
+        
+        # Get the final key and axis order for writing
+        lazy_axis_order = subset_view.axis_order
+        lazy_key = subset_view.key
+
+        # Reinsert integer indices
+        for ind in subset_view._int_index:
+            lazy_axis_order = (
+                lazy_axis_order[: ind[0]] + (ind[2],) + lazy_axis_order[ind[0] :]
+            )
+            lazy_key = lazy_key[: ind[0]] + (ind[1],) + lazy_key[ind[0] :]
+
+        # Compute the reversed axis order to map back to original dataset layout
+        reversed_axis_order = sorted(
+            range(len(lazy_axis_order)), key=lambda i: lazy_axis_order[i]
+        )
+        reversed_slice_key = tuple(
+            lazy_key[i] for i in reversed_axis_order if i < len(lazy_key)
+        )
+
+        # Compute the axis order for transposing the value back to dataset layout
+        reversed_axis_order_write = sorted(
+            range(len(subset_view.axis_order)), key=lambda i: subset_view.axis_order[i]
+        )
+
+        # Transform value to match dataset's axis order
+        value_array = np.asarray(value)
+        if value_array.ndim > 0 and len(reversed_axis_order_write) > 0:
+            # Only transpose if value has dimensions and we have axes to reorder
+            if value_array.ndim == len(reversed_axis_order_write):
+                value_transposed = value_array.transpose(reversed_axis_order_write)
+            else:
+                # Value might be broadcast - let the dataset handle it
+                value_transposed = value_array
+        else:
+            value_transposed = value_array
+
+        # Write to the underlying dataset
+        self.dataset[reversed_slice_key] = value_transposed
+
     def lazy_iter(self, axis: int = 0):
         """Lazily iterate over slices along an axis.
         

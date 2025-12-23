@@ -798,6 +798,117 @@ class TestCallMethod:
         assert_array_equal(expected, result)
 
 
+class TestSetItem:
+    """Tests for __setitem__ method that respects slices and transposes."""
+
+    @pytest.fixture
+    def writable_h5_file(self) -> Generator[h5py.File, None, None]:
+        """Create a temporary HDF5 file for writing tests."""
+        with tempfile.NamedTemporaryFile(suffix=".hdf5", delete=True) as f:
+            with h5py.File(f.name, "w") as h5f:
+                # 3D dataset with shape (100, 10, 5) - matching the issue example
+                data_3d = np.random.rand(100, 10, 5)
+                h5f.create_dataset("data", data=data_3d)
+                yield h5f
+
+    def test_setitem_basic_no_transpose(self, writable_h5_file: h5py.File):
+        """Test basic setitem without transpose."""
+        view = DatasetView(writable_h5_file["data"])
+        original = writable_h5_file["data"][:]
+        
+        # Set first slice to zeros
+        view[:, :, 0] = np.zeros((100, 10))
+        
+        # Verify the change
+        result = writable_h5_file["data"][:]
+        assert_array_equal(result[:, :, 0], np.zeros((100, 10)))
+        # Other slices should be unchanged
+        assert_array_equal(result[:, :, 1:], original[:, :, 1:])
+
+    def test_setitem_with_transpose_issue_30(self, writable_h5_file: h5py.File):
+        """Test setitem with transpose - reproduces issue #30."""
+        view = DatasetView(writable_h5_file["data"])
+        transposed = view.lazy_transpose([0, 2, 1])  # Shape becomes (100, 5, 10)
+        
+        # Get original last column (in transposed view) - need to copy since it reads from file
+        original_last = transposed[:, :, -1].copy()  # This returns ndarray via __getitem__
+        
+        # This was failing before the fix
+        transposed[:, :, -1] = original_last * 2
+        
+        # Verify the change
+        new_last = transposed[:, :, -1]
+        assert_array_equal(new_last, original_last * 2)
+
+    def test_setitem_with_lazy_slice(self, writable_h5_file: h5py.File):
+        """Test setitem with lazy slice applied."""
+        view = DatasetView(writable_h5_file["data"])
+        sliced = view.lazy_slice[10:20, :, :]
+        
+        # Set entire slice to ones
+        sliced[:] = np.ones((10, 10, 5))
+        
+        # Verify the change
+        result = writable_h5_file["data"][:]
+        assert_array_equal(result[10:20, :, :], np.ones((10, 10, 5)))
+
+    def test_setitem_with_slice_and_transpose(self, writable_h5_file: h5py.File):
+        """Test setitem with both slice and transpose."""
+        view = DatasetView(writable_h5_file["data"])
+        # Slice then transpose
+        sliced_transposed = view.lazy_slice[0:50, :, :].lazy_transpose([2, 1, 0])
+        # Shape is now (5, 10, 50)
+        
+        # Set a value
+        new_values = np.full((5, 10), 42.0)
+        sliced_transposed[:, :, 0] = new_values
+        
+        # Verify - in original layout this should be [0, :, :]
+        result = writable_h5_file["data"][0, :, :]
+        assert_array_equal(result, new_values.T)  # Transposed back
+
+    def test_setitem_scalar(self, writable_h5_file: h5py.File):
+        """Test setitem with scalar value."""
+        view = DatasetView(writable_h5_file["data"])
+        transposed = view.lazy_transpose([0, 2, 1])
+        
+        # Set single element
+        transposed[0, 0, 0] = 999.0
+        
+        # Verify - need to account for transpose
+        # transposed[0, 0, 0] maps to original[0, 0, 0]
+        assert writable_h5_file["data"][0, 0, 0] == 999.0
+
+    def test_setitem_with_negative_index(self, writable_h5_file: h5py.File):
+        """Test setitem with negative indices."""
+        view = DatasetView(writable_h5_file["data"])
+        transposed = view.lazy_transpose([0, 2, 1])
+        
+        # Set last element in transposed view
+        transposed[-1, -1, -1] = 123.0
+        
+        # In original: transposed[-1, -1, -1] = original[-1, -1, -1]
+        # with transpose [0, 2, 1], position (i, j, k) in transposed = (i, k, j) in original
+        assert writable_h5_file["data"][-1, -1, -1] == 123.0
+
+    def test_setitem_preserves_other_data(self, writable_h5_file: h5py.File):
+        """Test that setitem only modifies targeted data."""
+        original = writable_h5_file["data"][:].copy()
+        view = DatasetView(writable_h5_file["data"])
+        transposed = view.lazy_transpose([0, 2, 1])
+        
+        # Modify only one slice
+        transposed[50, :, :] = np.zeros((5, 10))
+        
+        # Check that other data is unchanged
+        result = writable_h5_file["data"][:]
+        # Row 50 should be changed
+        assert_array_equal(result[50, :, :], np.zeros((10, 5)))
+        # Other rows should be unchanged
+        assert_array_equal(result[:50, :, :], original[:50, :, :])
+        assert_array_equal(result[51:, :, :], original[51:, :, :])
+
+
 class TestReadDirect:
     """Tests for read_direct method (h5py only)."""
 
