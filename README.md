@@ -1,6 +1,6 @@
 # lazyslice
 
-[![PyPI version](https://badge.fury.io/py/lazyslice.svg)](https://badge.fury.io/py/lazyslice)
+[![PyPI version](https://img.shields.io/pypi/v/lazyslice.svg)](https://pypi.org/project/lazyslice/)
 [![codecov](https://codecov.io/gh/catalystneuro/lazyslice/branch/main/graph/badge.svg)](https://codecov.io/gh/catalystneuro/lazyslice)
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 [![Python](https://img.shields.io/pypi/pyversions/lazyslice.svg)](https://pypi.org/project/lazyslice/)
