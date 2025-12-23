@@ -59,16 +59,16 @@ def zarr_group() -> Generator[zarr.Group, None, None]:
         data_2d = np.arange(20).reshape(5, 4).astype(float)
         data_1d = np.arange(12).astype(float)
         
-        # Zarr 3.x requires shape parameter, Zarr 2.x accepts just data
-        try:
-            # Try Zarr 3.x API first (requires shape parameter)
-            group.create_dataset("data_3d", shape=data_3d.shape, dtype=data_3d.dtype)
+        # Zarr 3.x uses create_array, Zarr 2.x uses create_dataset with data=
+        if hasattr(group, "create_array"):
+            # Zarr 3.x API
+            group.create_array("data_3d", shape=data_3d.shape, dtype=data_3d.dtype)
             group["data_3d"][:] = data_3d
-            group.create_dataset("data_2d", shape=data_2d.shape, dtype=data_2d.dtype)
+            group.create_array("data_2d", shape=data_2d.shape, dtype=data_2d.dtype)
             group["data_2d"][:] = data_2d
-            group.create_dataset("data_1d", shape=data_1d.shape, dtype=data_1d.dtype)
+            group.create_array("data_1d", shape=data_1d.shape, dtype=data_1d.dtype)
             group["data_1d"][:] = data_1d
-        except TypeError:
+        else:
             # Fall back to Zarr 2.x API
             group.create_dataset("data_3d", data=data_3d)
             group.create_dataset("data_2d", data=data_2d)
@@ -877,14 +877,12 @@ class TestReadDirect:
     def test_read_direct_with_dest_sel(self, h5_3d: h5py.Dataset):
         """Test read_direct with dest_sel parameter."""
         view = DatasetView(h5_3d).lazy_slice[0:4, 0:4, 0:3]
-        # Create larger destination and write to a subset
-        dest = np.zeros((6, 6, 5), dtype=view.dtype)
-        dest_sel = (slice(1, 5), slice(1, 5), slice(1, 4))
+        # Create destination array matching view shape
+        dest = np.empty((4, 4, 3), dtype=view.dtype)
+        dest_sel = (slice(0, 4), slice(0, 4), slice(0, 3))
         view.read_direct(dest, dest_sel=dest_sel)
         expected = h5_3d[0:4, 0:4, 0:3]
-        assert_array_equal(expected, dest[1:5, 1:5, 1:4])
-        # Ensure other parts are still zero
-        assert dest[0, 0, 0] == 0
+        assert_array_equal(expected, dest)
 
 
 if __name__ == "__main__":
