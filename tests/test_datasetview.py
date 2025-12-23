@@ -798,5 +798,94 @@ class TestCallMethod:
         assert_array_equal(expected, result)
 
 
+class TestReadDirect:
+    """Tests for read_direct method (h5py only)."""
+
+    def test_read_direct_basic(self, h5_3d: h5py.Dataset):
+        """Test basic read_direct without selections."""
+        view = DatasetView(h5_3d)
+        dest = np.empty(view.shape, dtype=view.dtype)
+        view.read_direct(dest)
+        expected = h5_3d[()]
+        assert_array_equal(expected, dest)
+
+    def test_read_direct_with_lazy_slice(self, h5_3d: h5py.Dataset):
+        """Test read_direct on a sliced view."""
+        view = DatasetView(h5_3d).lazy_slice[2:8, 1:6, 0:4]
+        dest = np.empty(view.shape, dtype=view.dtype)
+        view.read_direct(dest)
+        expected = h5_3d[2:8, 1:6, 0:4]
+        assert_array_equal(expected, dest)
+
+    def test_read_direct_with_source_sel(self, h5_3d: h5py.Dataset):
+        """Test read_direct with source_sel parameter."""
+        view = DatasetView(h5_3d)
+        # Select a subset using source_sel
+        source_sel = (slice(2, 6), slice(1, 5), slice(0, 3))
+        dest = np.empty((4, 4, 3), dtype=view.dtype)
+        view.read_direct(dest, source_sel=source_sel)
+        expected = h5_3d[2:6, 1:5, 0:3]
+        assert_array_equal(expected, dest)
+
+    def test_read_direct_with_transpose(self, h5_3d: h5py.Dataset):
+        """Test read_direct on a transposed view."""
+        view = DatasetView(h5_3d).lazy_transpose([2, 0, 1])
+        dest = np.empty(view.shape, dtype=view.dtype)
+        view.read_direct(dest)
+        expected = h5_3d[()].transpose([2, 0, 1])
+        assert_array_equal(expected, dest)
+
+    def test_read_direct_with_slice_and_transpose(self, h5_3d: h5py.Dataset):
+        """Test read_direct on a sliced and transposed view."""
+        view = DatasetView(h5_3d).lazy_slice[1:7, 2:6, 0:4].lazy_transpose([2, 0, 1])
+        dest = np.empty(view.shape, dtype=view.dtype)
+        view.read_direct(dest)
+        expected = h5_3d[1:7, 2:6, 0:4].transpose([2, 0, 1])
+        assert_array_equal(expected, dest)
+
+    def test_read_direct_with_step(self, h5_3d: h5py.Dataset):
+        """Test read_direct on a view with step slicing."""
+        view = DatasetView(h5_3d).lazy_slice[::2, ::2, ::2]
+        dest = np.empty(view.shape, dtype=view.dtype)
+        view.read_direct(dest)
+        expected = h5_3d[::2, ::2, ::2]
+        assert_array_equal(expected, dest)
+
+    def test_read_direct_2d(self, h5_2d: h5py.Dataset):
+        """Test read_direct with 2D dataset."""
+        view = DatasetView(h5_2d)
+        dest = np.empty(view.shape, dtype=view.dtype)
+        view.read_direct(dest)
+        expected = h5_2d[()]
+        assert_array_equal(expected, dest)
+
+    def test_read_direct_1d(self, h5_1d: h5py.Dataset):
+        """Test read_direct with 1D dataset."""
+        view = DatasetView(h5_1d)
+        dest = np.empty(view.shape, dtype=view.dtype)
+        view.read_direct(dest)
+        expected = h5_1d[()]
+        assert_array_equal(expected, dest)
+
+    def test_read_direct_zarr_raises(self, zarr_3d):
+        """Test that read_direct raises NotImplementedError for zarr."""
+        view = DatasetView(zarr_3d)
+        dest = np.empty(view.shape, dtype=view.dtype)
+        with pytest.raises(NotImplementedError, match="read_direct is not supported"):
+            view.read_direct(dest)
+
+    def test_read_direct_with_dest_sel(self, h5_3d: h5py.Dataset):
+        """Test read_direct with dest_sel parameter."""
+        view = DatasetView(h5_3d).lazy_slice[0:4, 0:4, 0:3]
+        # Create larger destination and write to a subset
+        dest = np.zeros((6, 6, 5), dtype=view.dtype)
+        dest_sel = (slice(1, 5), slice(1, 5), slice(1, 4))
+        view.read_direct(dest, dest_sel=dest_sel)
+        expected = h5_3d[0:4, 0:4, 0:3]
+        assert_array_equal(expected, dest[1:5, 1:5, 1:4])
+        # Ensure other parts are still zero
+        assert dest[0, 0, 0] == 0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
